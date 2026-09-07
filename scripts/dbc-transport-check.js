@@ -65,6 +65,20 @@ export async function checkDbc(client) {
 		equal(error.message.includes('private'), false);
 	}
 	equal(failed, true);
+	for (const separator of [' ', '\n']) {
+		let rejected = false;
+		try {
+			await client.openDbc(
+				'BO_ 1 M: 4 ECU\n SG_ X : 0|32@1+ (1,0) [0|255] "" ECU\nCM_ "comment"' +
+					separator +
+					'SIG_VALTYPE_ 1 X : 1;'
+			);
+		} catch (error) {
+			rejected = true;
+			equal(error.message.includes('3:1: CM_'), true);
+		}
+		equal(rejected, true);
+	}
 	const mux = await client.openDbc(
 		'BO_ 42 Status: 1 ECU\n SG_ State M : 0|8@1+ (1,0) [0|255] "" DASH'
 	);

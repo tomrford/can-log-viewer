@@ -55,6 +55,13 @@ impl Dbc {
         for record in source::records(text)? {
             let line = record.text.as_str();
             let mut parse = || -> Result<(), DbcError> {
+                if record.keyword == "CM_" {
+                    let quote = line.find('"').ok_or(DbcError::InvalidQuotedString)?;
+                    let (_, rest) = quotes::parse_quoted(&line[quote..])?;
+                    if trim_dbc(rest) != ";" {
+                        return Err(DbcError::UnterminatedRecord);
+                    }
+                }
                 match record.keyword {
                     "BO_" => {
                         finish_message(&mut messages, &mut current_message, &mut current_signals);
@@ -284,7 +291,9 @@ mod tests {
             "VAL_ 1 X 0 \"Off\";",
             "VAL_TABLE_ State 0 \"Off\";",
         ] {
-            assert!(Dbc::parse(&format!("{body}CM_ \"comment\"\n{record}")).is_err());
+            for separator in ["\n", " "] {
+                assert!(Dbc::parse(&format!("{body}CM_ \"comment\"{separator}{record}")).is_err());
+            }
         }
         let typed = Dbc::parse(&format!("{body}SIG_VALTYPE_ 1 X : 1;")).unwrap();
         assert_eq!(typed.messages[0].signals[0].value_type, ValueType::Float32);
