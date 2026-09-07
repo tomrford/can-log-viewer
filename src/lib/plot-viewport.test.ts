@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	boxViewport,
 	dataPointAtRatio,
-	paddedViewport,
+	paddedXRange,
+	paddedYRange,
 	panViewport,
 	ratioAtDataPoint,
 	viewportCenter,
@@ -12,16 +13,18 @@ import {
 
 describe('plot viewport math', () => {
 	it('pads the y axis and keeps the x axis tight', () => {
-		expect(paddedViewport(0, 100, 10, 20)).toEqual({ xMin: 0, xMax: 100, yMin: 9.5, yMax: 20.5 });
+		expect(paddedXRange(0, 100)).toEqual({ min: 0, max: 100 });
+		expect(paddedYRange(10, 20)).toEqual({ min: 9.5, max: 20.5 });
 	});
 
 	it('pads equal extents around the shared value', () => {
-		expect(paddedViewport(5, 5, 100, 100)).toEqual({ xMin: 4, xMax: 6, yMin: 95, yMax: 105 });
+		expect(paddedXRange(5, 5)).toEqual({ min: 4, max: 6 });
+		expect(paddedYRange(100, 100)).toEqual({ min: 95, max: 105 });
 	});
 
 	it('rejects non-finite extents', () => {
-		expect(paddedViewport(0, Number.POSITIVE_INFINITY, 0, 1)).toBeNull();
-		expect(paddedViewport(Number.NaN, 1, 0, 1)).toBeNull();
+		expect(paddedXRange(0, Number.POSITIVE_INFINITY)).toBeNull();
+		expect(paddedYRange(Number.NaN, 1)).toBeNull();
 	});
 
 	it('pans in data units from pixel movement', () => {

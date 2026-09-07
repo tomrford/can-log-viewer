@@ -19,7 +19,6 @@ export type SignalView = {
 	x: Float64Array;
 	y: Float64Array;
 	points: number;
-	latestText: string;
 	factor: number;
 	offset: number;
 	minimum: number;
@@ -128,7 +127,6 @@ function signalView(signal: PlotSignal): SignalView {
 	const series = signal.series;
 	const sourceTimes = series?.timesMs ?? EMPTY_SERIES;
 	const sourceValues = series?.values ?? EMPTY_SERIES;
-	const latest = formatDecodedValue(sourceValues.at(-1) ?? null, signal);
 
 	return {
 		key: signal.key,
@@ -140,7 +138,6 @@ function signalView(signal: PlotSignal): SignalView {
 		x: sourceTimes,
 		y: sourceValues,
 		points: sourceTimes.length,
-		latestText: latest.text,
 		factor: signal.factor,
 		offset: signal.offset,
 		minimum: signal.minimum,
@@ -297,14 +294,6 @@ export function signalXRange(views: SignalView[]): PlotAxisRange | null {
 export function signalYRange(views: SignalView[]): PlotAxisRange | null {
 	const domain = combinedDomain(views);
 	return domain === null ? null : paddedYRange(domain.yMin, domain.yMax);
-}
-
-export function signalDomain(views: SignalView[]): PlotViewport | null {
-	const x = signalXRange(views);
-	const y = signalYRange(views);
-	if (x === null || y === null) return null;
-
-	return { xMin: x.min, xMax: x.max, yMin: y.min, yMax: y.max };
 }
 
 /**

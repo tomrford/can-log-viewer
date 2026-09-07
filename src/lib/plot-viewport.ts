@@ -59,19 +59,6 @@ export function paddedYRange(min: number, max: number): PlotAxisRange | null {
 	return paddedRange(min, max, Y_PADDING);
 }
 
-export function paddedViewport(
-	xMin: number,
-	xMax: number,
-	yMin: number,
-	yMax: number
-): PlotViewport | null {
-	const x = paddedXRange(xMin, xMax);
-	const y = paddedYRange(yMin, yMax);
-	if (x === null || y === null) return null;
-
-	return { xMin: x.min, xMax: x.max, yMin: y.min, yMax: y.max };
-}
-
 /**
  * Advances the y window by the change from one viewport to the next, measured
  * in the outgoing viewport's own ratio space.

@@ -14,7 +14,6 @@ function rampView(key: string, length: number): SignalView {
 		x,
 		y: x,
 		points: length,
-		latestText: '-',
 		factor: 1,
 		offset: 0,
 		minimum: 0,

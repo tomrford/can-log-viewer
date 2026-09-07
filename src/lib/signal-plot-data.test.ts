@@ -13,7 +13,8 @@ import {
 	nearestSignalSample,
 	plotSeriesForViews,
 	renderIndexRange,
-	signalDomain,
+	signalXRange,
+	signalYRange,
 	type SignalView
 } from './signal-plot-data';
 import type { PlotSignal } from './stores/plot-data.svelte.js';
@@ -29,7 +30,6 @@ function view(x: number[], y: number[] = x): SignalView {
 		x: new Float64Array(x),
 		y: new Float64Array(y),
 		points: x.length,
-		latestText: '-',
 		factor: 1,
 		offset: 0,
 		minimum: 0,
@@ -125,33 +125,26 @@ describe('signal plot data', () => {
 	});
 
 	it('fits the domain across views from min/max scans', () => {
-		expect(signalDomain([view([0, 50, 100], [10, 15, 20]), view([25, 75], [-10, 0])])).toEqual({
-			xMin: 0,
-			xMax: 100,
-			yMin: -11.5,
-			yMax: 21.5
-		});
+		const views = [view([0, 50, 100], [10, 15, 20]), view([25, 75], [-10, 0])];
+		expect(signalXRange(views)).toEqual({ min: 0, max: 100 });
+		expect(signalYRange(views)).toEqual({ min: -11.5, max: 21.5 });
 	});
 
 	it('fits x domain from min/max scan when timestamps are non-monotonic', () => {
-		expect(signalDomain([view([5, 1, 9, 3], [10, 20, 30, 40])])).toEqual({
-			xMin: 1,
-			xMax: 9,
-			yMin: 8.5,
-			yMax: 41.5
-		});
+		expect(signalXRange([view([5, 1, 9, 3], [10, 20, 30, 40])])).toEqual({ min: 1, max: 9 });
 	});
 
 	it('skips samples with non-finite coordinates', () => {
-		expect(
-			signalDomain([view([Number.NaN, 10, 20, 30], [5, 10, Number.POSITIVE_INFINITY, 20])])
-		).toEqual({ xMin: 10, xMax: 30, yMin: 9.5, yMax: 20.5 });
+		const views = [view([Number.NaN, 10, 20, 30], [5, 10, Number.POSITIVE_INFINITY, 20])];
+		expect(signalXRange(views)).toEqual({ min: 10, max: 30 });
+		expect(signalYRange(views)).toEqual({ min: 9.5, max: 20.5 });
 	});
 
 	it('returns null when no view has finite points', () => {
-		expect(signalDomain([])).toBeNull();
-		expect(signalDomain([view([])])).toBeNull();
-		expect(signalDomain([view([0, 1], [Number.NaN, Number.NaN])])).toBeNull();
+		for (const views of [[], [view([])], [view([0, 1], [Number.NaN, Number.NaN])]]) {
+			expect(signalXRange(views)).toBeNull();
+			expect(signalYRange(views)).toBeNull();
+		}
 	});
 
 	it('recomputes the domain when the value series changes for the same time series', () => {
@@ -160,8 +153,8 @@ describe('signal plot data', () => {
 		const first = { ...base, x, y: new Float64Array([0, 10]), points: 2 };
 		const second = { ...base, x, y: new Float64Array([0, 40]), points: 2 };
 
-		expect(signalDomain([first])).toEqual({ xMin: 0, xMax: 100, yMin: -0.5, yMax: 10.5 });
-		expect(signalDomain([second])).toEqual({ xMin: 0, xMax: 100, yMin: -2, yMax: 42 });
+		expect(signalYRange([first])).toEqual({ min: -0.5, max: 10.5 });
+		expect(signalYRange([second])).toEqual({ min: -2, max: 42 });
 	});
 
 	it('keeps y-axis tick labels compact', () => {
