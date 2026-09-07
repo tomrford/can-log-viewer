@@ -89,9 +89,9 @@ impl SignalValueDescriptions {
             return Err(DbcError::InvalidValueDescriptionLine);
         };
         let message_id_text = &cursor[..message_id_end];
-        let message_id = message_id_text.parse().map_err(|error| {
-            DbcError::invalid_integer("value-description message ID", message_id_text, error)
-        })?;
+        let message_id = message_id_text
+            .parse()
+            .map_err(|error| DbcError::invalid_integer("value-description message ID", error))?;
         cursor = trim_space_tab(&cursor[message_id_end..]);
 
         let Some(signal_name_end) = find_dbc_whitespace(cursor) else {
@@ -145,9 +145,9 @@ impl SignalValueType {
             return Err(DbcError::InvalidSignalValueTypeLine);
         };
         let message_id_text = &cursor[..message_id_end];
-        let message_id = message_id_text.parse().map_err(|error| {
-            DbcError::invalid_integer("signal value-type message ID", message_id_text, error)
-        })?;
+        let message_id = message_id_text
+            .parse()
+            .map_err(|error| DbcError::invalid_integer("signal value-type message ID", error))?;
         cursor = trim_space_tab(&cursor[message_id_end..]);
 
         let Some(signal_name_end) = cursor
@@ -166,7 +166,7 @@ impl SignalValueType {
 
         let value_type_code: u8 = cursor
             .parse()
-            .map_err(|error| DbcError::invalid_integer("signal value type", cursor, error))?;
+            .map_err(|error| DbcError::invalid_integer("signal value type", error))?;
         let value_type = match value_type_code {
             0 => ValueType::Integer,
             1 => ValueType::Float32,
@@ -198,9 +198,9 @@ fn parse_value_description_pairs(text: &str) -> Result<Vec<ValueDescription>, Db
             return Err(DbcError::InvalidValueDescriptionLine);
         };
         let raw_text = &cursor[..raw_end];
-        let raw_value: i64 = raw_text.parse().map_err(|error| {
-            DbcError::invalid_integer("value-description raw value", raw_text, error)
-        })?;
+        let raw_value: i64 = raw_text
+            .parse()
+            .map_err(|error| DbcError::invalid_integer("value-description raw value", error))?;
         ensure_js_safe_integer(raw_value)?;
         cursor = trim_space_tab(&cursor[raw_end..]);
 
