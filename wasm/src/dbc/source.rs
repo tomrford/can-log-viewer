@@ -15,8 +15,8 @@ pub struct Diagnostic {
 
 #[derive(Clone, Copy)]
 pub(super) struct Position {
-    line: usize,
-    column: usize,
+    pub(super) line: usize,
+    pub(super) column: usize,
 }
 
 impl Position {
@@ -97,8 +97,8 @@ pub(super) fn decode(bytes: &[u8]) -> Cow<'_, str> {
     )
 }
 
-pub(super) struct Record {
-    pub text: String,
+pub(super) struct Record<'a> {
+    pub text: &'a str,
     pub keyword: &'static str,
     pub position: Position,
 }
@@ -143,113 +143,96 @@ const KEYWORDS: &[&str] = &[
 
 /// Separate line records from semicolon records without interpreting quoted
 /// comment contents as definitions. Namespace declarations are not records.
-pub(super) fn records(text: &str) -> Result<Vec<Record>, DbcError> {
-    let mut result = Vec::new();
+pub(super) fn records(text: &str) -> impl Iterator<Item = Result<Record<'_>, DbcError>> {
     let mut remaining = text;
     let mut position = Position { line: 1, column: 1 };
     let mut namespace = false;
-    while !remaining.is_empty() {
-        let whitespace =
-            remaining.len() - remaining.trim_start_matches([' ', '\t', '\r', '\n']).len();
-        advance(&remaining[..whitespace], &mut position);
-        remaining = &remaining[whitespace..];
-        if remaining.is_empty() {
-            break;
-        }
-        let token = remaining
-            .split([' ', '\t', '\r', '\n', ':'])
-            .next()
-            .unwrap();
-        let keyword = KEYWORDS
-            .iter()
-            .copied()
-            .find(|&known| known == token)
-            .unwrap_or("unknown");
-        let line_end = remaining.find('\n').unwrap_or(remaining.len());
-        if namespace
-            && remaining[..line_end].split_ascii_whitespace().all(|token| {
-                token
-                    .bytes()
-                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
-            })
-        {
-            advance(&remaining[..line_end], &mut position);
-            remaining = &remaining[line_end..];
-            continue;
-        }
-        namespace = keyword == "NS_";
-        let line_record = matches!(keyword, "BO_" | "SG_" | "VERSION" | "NS_" | "BS_" | "BU_");
-        let end = if line_record {
-            line_end
-        } else {
-            let mut quoted = false;
-            let mut escaped = false;
-            let mut end = None;
-            for (index, character) in remaining.char_indices() {
-                if escaped {
-                    escaped = false;
-                    continue;
-                }
-                if quoted && character == '\\' {
-                    escaped = true;
-                    continue;
-                }
-                if character == '"' {
-                    quoted = !quoted;
-                }
-                if character == '\n' && !quoted && starts_record(&remaining[index + 1..]) {
-                    return Err(position.error(keyword, DbcError::UnterminatedRecord));
-                }
-                if character == ';' && !quoted {
-                    end = Some(index + 1);
-                    break;
-                }
+    std::iter::from_fn(move || {
+        while !remaining.is_empty() {
+            let whitespace =
+                remaining.len() - remaining.trim_start_matches([' ', '\t', '\r', '\n']).len();
+            advance(&remaining[..whitespace], &mut position);
+            remaining = &remaining[whitespace..];
+            if remaining.is_empty() {
+                break;
             }
-            end.ok_or_else(|| {
-                position.error(
-                    keyword,
-                    if quoted {
-                        DbcError::InvalidQuotedString
-                    } else {
-                        DbcError::UnterminatedRecord
-                    },
-                )
-            })?
-        };
-        let raw = &remaining[..end];
-        // The subset parsers accept spaces/tabs between fields. Preserve all
-        // quoted content while normalising record separators outside strings.
-        let mut quoted = false;
-        let mut escaped = false;
-        let normalised: String = raw
-            .chars()
-            .map(|character| {
-                if escaped {
-                    escaped = false;
-                    return character;
+            let token = remaining
+                .split([' ', '\t', '\r', '\n', ':'])
+                .next()
+                .unwrap();
+            let keyword = KEYWORDS
+                .iter()
+                .copied()
+                .find(|&known| known == token)
+                .unwrap_or("unknown");
+            let line_end = remaining.find('\n').unwrap_or(remaining.len());
+            if namespace
+                && remaining[..line_end].split_ascii_whitespace().all(|token| {
+                    token.bytes().all(|byte| {
+                        byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_'
+                    })
+                })
+            {
+                advance(&remaining[..line_end], &mut position);
+                remaining = &remaining[line_end..];
+                continue;
+            }
+            namespace = keyword == "NS_";
+            let input = remaining;
+            remaining = ""; // A malformed record ends iteration.
+            let line_record = matches!(keyword, "BO_" | "SG_" | "VERSION" | "NS_" | "BS_" | "BU_");
+            let end = if line_record {
+                line_end
+            } else {
+                let mut quoted = false;
+                let mut escaped = false;
+                let mut end = None;
+                for (index, character) in input.char_indices() {
+                    if escaped {
+                        escaped = false;
+                        continue;
+                    }
+                    if quoted && character == '\\' {
+                        escaped = true;
+                        continue;
+                    }
+                    if character == '"' {
+                        quoted = !quoted;
+                    }
+                    if character == '\n' && !quoted && starts_record(&input[index + 1..]) {
+                        return Some(Err(position.error(keyword, DbcError::UnterminatedRecord)));
+                    }
+                    if character == ';' && !quoted {
+                        end = Some(index + 1);
+                        break;
+                    }
                 }
-                if quoted && character == '\\' {
-                    escaped = true;
+                match end {
+                    Some(end) => end,
+                    None => {
+                        return Some(Err(position.error(
+                            keyword,
+                            if quoted {
+                                DbcError::InvalidQuotedString
+                            } else {
+                                DbcError::UnterminatedRecord
+                            },
+                        )));
+                    }
                 }
-                if character == '"' {
-                    quoted = !quoted;
-                }
-                if !quoted && matches!(character, '\n' | '\r' | '\t') {
-                    ' '
-                } else {
-                    character
-                }
-            })
-            .collect();
-        result.push(Record {
-            text: normalised,
-            keyword,
-            position,
-        });
-        advance(raw, &mut position);
-        remaining = &remaining[end..];
-    }
-    Ok(result)
+            };
+            let raw = &input[..end];
+            let record = Record {
+                text: raw,
+                keyword,
+                position,
+            };
+            advance(raw, &mut position);
+            remaining = &input[end..];
+            return Some(Ok(record));
+        }
+        None
+    })
 }
 
 fn advance(text: &str, position: &mut Position) {
@@ -305,4 +288,27 @@ fn starts_record(text: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comments_do_not_create_multiline_attribute_or_mux_records() {
+        let text = "CM_ \"a ; comment\nSG_MUL_VAL_ 1 X Root 9-9;\n\\\"quoted\\\"\";\n\
+                    BA_DEF_ BO_ \"VFrameFormat\" ENUM\n \"StandardCAN\", \"StandardCAN_FD\";\n\
+                    BA_ \"VFrameFormat\"\n BO_ 1 1;\n\
+                    SG_MUL_VAL_ 1 X\n Root 2-3;";
+        let records = records(text).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(
+            records.iter().map(|r| r.keyword).collect::<Vec<_>>(),
+            ["CM_", "BA_DEF_", "BA_", "SG_MUL_VAL_"]
+        );
+        assert_eq!(records[3].text, "SG_MUL_VAL_ 1 X\n Root 2-3;");
+        assert_eq!(
+            (records[3].position.line, records[3].position.column),
+            (8, 1)
+        );
+    }
 }

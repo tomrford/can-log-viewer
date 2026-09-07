@@ -52,8 +52,9 @@ impl Dbc {
 
         let mut warnings = Vec::new();
         let mut signal_positions = Vec::new();
-        for record in source::records(text)? {
-            let line = record.text.as_str();
+        for record in source::records(text) {
+            let record = record?;
+            let line = record.text;
             let mut parse = || -> Result<(), DbcError> {
                 if record.keyword == "CM_" {
                     let quote = line.find('"').ok_or(DbcError::InvalidQuotedString)?;
@@ -262,11 +263,7 @@ fn attachment_signal<'a>(
 }
 
 pub(crate) fn trim_dbc(text: &str) -> &str {
-    text.trim_matches(|character| matches!(character, ' ' | '\t' | '\r'))
-}
-
-pub(crate) fn trim_space_tab(text: &str) -> &str {
-    text.trim_matches(|character| matches!(character, ' ' | '\t'))
+    text.trim_matches(|character| matches!(character, ' ' | '\t' | '\r' | '\n'))
 }
 
 pub(crate) fn find_dbc_whitespace(text: &str) -> Option<usize> {
@@ -276,7 +273,7 @@ pub(crate) fn find_dbc_whitespace(text: &str) -> Option<usize> {
 }
 
 pub(crate) const fn is_dbc_whitespace(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r')
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
 #[cfg(test)]
@@ -302,6 +299,23 @@ mod tests {
             .to_string();
         assert!(error.contains("3:1: SIG_TYPE_REF_"));
         assert!(error.contains("named signal types"));
+    }
+
+    #[test]
+    fn multiline_values_preserve_quoted_whitespace() {
+        let dbc = Dbc::parse(
+            "BO_ 1 M: 4 ECU\n SG_ X : 0|32@1+ (1,0) [0|255] \"\" ECU\n\
+             VAL_TABLE_\n States\n 0\n \"Off\r\n\tline\"\n 1 \"On\";\n\
+             VAL_\n 1\n X\n States;\n\
+             SIG_VALTYPE_\n 1\n X\n :\n 1;",
+        )
+        .unwrap();
+        let signal = &dbc.messages[0].signals[0];
+        assert_eq!(signal.value_type, ValueType::Float32);
+        assert_eq!(
+            signal.value_descriptions().unwrap()[0].label,
+            "Off\r\n\tline"
+        );
     }
 
     #[test]
