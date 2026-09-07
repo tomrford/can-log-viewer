@@ -20,7 +20,9 @@ vi.mock('./dbc-library.js', () => ({
 	listStoredDbcs: vi.fn(() => Promise.resolve([])),
 	putStoredDbcs: vi.fn(() => Promise.resolve()),
 	resetStoredDbcs: vi.fn(() => Promise.resolve()),
-	storedDbcId: vi.fn((text: string) => Promise.resolve(text))
+	storedDbcId: vi.fn((input: string | Uint8Array) =>
+		Promise.resolve(typeof input === 'string' ? input : new TextDecoder().decode(input))
+	)
 }));
 
 const openDbcMock = openDbc as Mock<typeof openDbc>;
@@ -38,15 +40,49 @@ describe('dbcFiles', () => {
 		dbcFiles.hasLoadedLibrary = false;
 	});
 
+	it('retains legacy bytes and recoverable warnings in the library flow', async () => {
+		const bytes = new Uint8Array([0x42, 0x4f, 0x5f, 0x20, 0x80]);
+		const warnings = [
+			{
+				category: 'unsupported-record' as const,
+				keyword: 'CM_',
+				line: 3,
+				column: 2,
+				message: 'Record is not used by the viewer.'
+			}
+		];
+		openDbcMock.mockResolvedValueOnce({
+			...openDbcResult({} as DbcHandle, catalog(message())),
+			warnings
+		});
+		await dbcFiles.addFiles([new File([bytes], 'legacy.dbc')]);
+		expect(openDbcMock).toHaveBeenCalledExactlyOnceWith(bytes);
+		expect(vi.mocked(putStoredDbcs).mock.calls[0][0][0]).toMatchObject({
+			name: 'legacy.dbc',
+			bytes
+		});
+		expect(dbcFiles.files[0].warnings).toEqual(warnings);
+		expect(dbcFiles.error).toBeNull();
+	});
+
+	it('rejects an oversized DBC before reading file contents', async () => {
+		const oversized = new File([new Uint8Array(1024 * 1024 + 1)], 'large.dbc');
+		const read = vi.spyOn(oversized, 'arrayBuffer');
+		await dbcFiles.addFiles([oversized]);
+		expect(read).not.toHaveBeenCalled();
+		expect(openDbcMock).not.toHaveBeenCalled();
+		expect(dbcFiles.error).toContain('1 MiB');
+	});
+
 	it('reports an open failure without closing a handle', async () => {
 		openDbcMock.mockRejectedValueOnce(new Error('catalog failed'));
 
 		await dbcFiles.addFiles([file('broken.dbc', 'BO_ 1 Broken: 8 ECU')]);
 
-		expect(openDbcMock).toHaveBeenCalledWith('BO_ 1 Broken: 8 ECU');
+		expect(openDbcMock).toHaveBeenCalledWith(new TextEncoder().encode('BO_ 1 Broken: 8 ECU'));
 		expect(closeDbcMock).not.toHaveBeenCalled();
 		expect(dbcFiles.files).toEqual([]);
-		expect(dbcFiles.error).toBe('catalog failed');
+		expect(dbcFiles.error).toBe('broken.dbc: catalog failed');
 		expect(dbcFiles.isLoading).toBe(false);
 	});
 
@@ -117,7 +153,7 @@ describe('dbcFiles', () => {
 		openDbcMock.mockRejectedValueOnce(new Error('embedded catalog failed'));
 
 		await dbcFiles.addTransientDbcs(42, [{ name: 'broken.dbc', text: 'broken' }]);
-		expect(dbcFiles.error).toBe('embedded catalog failed');
+		expect(dbcFiles.error).toBe('broken.dbc: embedded catalog failed');
 
 		await dbcFiles.addTransientDbcs(43, []);
 
@@ -135,10 +171,10 @@ describe('dbcFiles', () => {
 		]);
 		await dbcFiles.addFiles([file('vehicle-again.dbc', 'same-content')]);
 
-		expect(openDbcMock).toHaveBeenCalledExactlyOnceWith('same-content');
+		expect(openDbcMock).toHaveBeenCalledExactlyOnceWith(new TextEncoder().encode('same-content'));
 		expect(closeDbcMock).not.toHaveBeenCalled();
 		expect(putStoredDbcsMock).toHaveBeenCalledExactlyOnceWith([
-			{ id: 'same-content', name: 'vehicle.dbc', text: 'same-content' }
+			{ id: 'same-content', name: 'vehicle.dbc', bytes: new TextEncoder().encode('same-content') }
 		]);
 		expect(dbcFiles.files).toHaveLength(1);
 		expect(dbcFiles.files[0]?.id).toBe('same-content');
@@ -587,6 +623,7 @@ describe('dbcFiles', () => {
 				name: 'stored.dbc',
 				handle,
 				catalog: catalog(message({ name: 'Stored' })),
+				warnings: [],
 				origin: 'library'
 			}
 		];
@@ -613,7 +650,7 @@ function dbcHandle(id: number): DbcHandle {
 }
 
 function openDbcResult(handle: DbcHandle, catalog: ParsedDbc): OpenDbcResult {
-	return { handle, catalog };
+	return { handle, catalog, warnings: [] };
 }
 
 function dbcEntry({
@@ -632,6 +669,7 @@ function dbcEntry({
 		name,
 		handle,
 		catalog: catalog(...messages),
+		warnings: [],
 		origin: 'library'
 	};
 }

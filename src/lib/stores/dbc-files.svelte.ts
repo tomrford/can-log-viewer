@@ -2,6 +2,7 @@ import {
 	closeDbc,
 	openDbc,
 	type DbcHandle,
+	type DbcDiagnostic,
 	type DbcMessage,
 	type DbcMessageIdentity,
 	type DbcSignal,
@@ -25,6 +26,7 @@ export type DbcFileEntry = {
 	name: string;
 	handle: DbcHandle;
 	catalog: ParsedDbc;
+	warnings: DbcDiagnostic[];
 	origin: 'library' | 'mf4';
 };
 
@@ -299,15 +301,16 @@ class DbcFilesStore {
 
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		assertTextFileContent(bytes, 'DBC');
-		const text = new TextDecoder().decode(bytes);
-		return { id: await storedDbcId(text), name: file.name, text };
+		return { id: await storedDbcId(bytes), name: file.name, bytes };
 	}
 
 	private async openStoredDbc(
 		dbc: StoredDbc,
 		origin: DbcFileEntry['origin'] = 'library'
 	): Promise<DbcCandidate> {
-		const { handle, catalog } = await openDbc(dbc.text);
+		const { handle, catalog, warnings } = await openDbc(dbc.bytes ?? dbc.text).catch((error) => {
+			throw new Error(`${dbc.name}: ${error instanceof Error ? error.message : 'DBC load failed'}`);
+		});
 
 		try {
 			assertUniqueMessageIdentities(dbc.name, catalog);
@@ -317,6 +320,7 @@ class DbcFilesStore {
 					name: dbc.name,
 					handle,
 					catalog,
+					warnings,
 					origin
 				},
 				stored: dbc

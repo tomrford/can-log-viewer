@@ -4,7 +4,7 @@ import type {
 	DbcMessageIdentity,
 	DecodedSignalSeries,
 	OpenTraceResult,
-	ParsedDbc,
+	OpenDbcResult,
 	TraceHandle,
 	TraceType
 } from 'cantraceviewer';
@@ -26,8 +26,8 @@ function client(): Promise<CanTraceClient> {
 	return pending;
 }
 
-export async function openDbc(text: string): Promise<{ handle: DbcHandle; catalog: ParsedDbc }> {
-	return (await client()).openDbc(text);
+export async function openDbc(input: Uint8Array | string): Promise<OpenDbcResult> {
+	return (await client()).openDbc(input);
 }
 
 export async function closeDbc(handle: DbcHandle): Promise<void> {
