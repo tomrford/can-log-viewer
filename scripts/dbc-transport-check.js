@@ -83,11 +83,8 @@ export async function checkDbc(client) {
 		'BO_ 42 Status: 1 ECU\n SG_ State M : 0|8@1+ (1,0) [0|255] "" DASH'
 	);
 	try {
-		equal(mux.catalog.messages[0].signals, []);
-		equal(
-			mux.warnings.map(({ category, line, column }) => [category, line, column]),
-			[['omitted-feature', 2, 2]]
-		);
+		equal(mux.catalog.messages[0].signals[0].isMultiplexer, true);
+		equal(mux.warnings, []);
 	} finally {
 		await client.closeDbc(mux.handle);
 	}
